@@ -21,7 +21,7 @@ A multi-agent research pipeline built with **Google ADK**, **AWS Bedrock (Claude
 ## Project Structure
 
 ```
-research-agent-adk-litellm/
+multi-agent-researcher-adk-litellm/
 │
 ├── agents/                         # Agent implementations
 │   ├── __init__.py
