@@ -1,0 +1,106 @@
+version: "3.9"
+
+services:
+
+  # ─────────────────────────────────────────
+  # Redis — LiteLLM response caching backend
+  # ─────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: research-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─────────────────────────────────────────
+  # Langfuse — observability & tracing
+  # Self-hosted: https://langfuse.com/docs/deployment/local
+  # ─────────────────────────────────────────
+  langfuse-db:
+    image: postgres:15-alpine
+    container_name: langfuse-postgres
+    environment:
+      POSTGRES_DB: langfuse
+      POSTGRES_USER: langfuse
+      POSTGRES_PASSWORD: langfuse_secret
+    volumes:
+      - langfuse_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U langfuse"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  langfuse:
+    image: langfuse/langfuse:2
+    container_name: langfuse-server
+    depends_on:
+      langfuse-db:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: postgresql://langfuse:langfuse_secret@langfuse-db:5432/langfuse
+      NEXTAUTH_SECRET: local-nextauth-secret-change-me
+      SALT: local-salt-change-me
+      NEXTAUTH_URL: http://localhost:3000
+      TELEMETRY_ENABLED: "false"
+      LANGFUSE_ENABLE_EXPERIMENTAL_FEATURES: "true"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/public/health | grep -q ok"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+
+  litellm-db:
+    image: postgres:15-alpine
+    container_name: litellm-postgres
+    environment:
+      POSTGRES_DB: litellm
+      POSTGRES_USER: litellm
+      POSTGRES_PASSWORD: litellm_secret
+    ports:
+      - "5433:5432"          # port 5433 to avoid conflict with Langfuse's postgres
+    volumes:
+      - litellm_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U litellm"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  litellm:
+      image: ghcr.io/berriai/litellm:main-latest
+      container_name: litellm-proxy
+      depends_on:
+        litellm-db:
+          condition: service_healthy
+      ports:
+        - "4000:4000"
+      volumes:
+        - ./litellm_config.yaml:/app/config.yaml
+      environment:
+        - DATABASE_URL=postgresql://litellm:litellm_secret@litellm-db:5432/litellm
+        - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY}
+        - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+        - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+        - AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN}
+        - AWS_REGION_NAME=${AWS_REGION_NAME}
+        - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY}
+        - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY}
+        - LANGFUSE_HOST=http://langfuse:3000
+        - REDIS_URL=redis://redis:6379
+      command: ["--config", "/app/config.yaml", "--port", "4000"]
+
+volumes:
+  redis_data:
+  langfuse_pg_data:
+  litellm_pg_data:

@@ -1,0 +1,59 @@
+# litellm_config.yaml
+# LiteLLM Proxy configuration for Smart Research Assistant
+# Docs: https://docs.litellm.ai/docs/proxy/configs
+
+# ─────────────────────────────────────────────────────────
+# Model definitions — routing through AWS Bedrock
+# ─────────────────────────────────────────────────────────
+model_list:
+  # Primary model for orchestrator (more capable)
+  - model_name: orchestrator-model
+    litellm_params:
+      model: bedrock/apac.anthropic.claude-sonnet-4-20250514-v1:0
+      aws_region_name: ap-southeast-1
+
+  # Sub-agent model (same model, separate routing alias)
+  - model_name: subagent-model
+    litellm_params:
+      model: bedrock/apac.anthropic.claude-sonnet-4-20250514-v1:0
+      aws_region_name: ap-southeast-1
+
+# ─────────────────────────────────────────────────────────
+# General proxy settings
+# ─────────────────────────────────────────────────────────
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY
+  ui_access_mode: "all"
+  database_connection_pool_limit: 10
+  user_api_key_cache_ttl: 300
+
+# ─────────────────────────────────────────────────────────
+# LiteLLM router / proxy settings
+# ─────────────────────────────────────────────────────────
+litellm_settings:
+  # ── Logging → Langfuse ──────────────────────────────
+  success_callback: ["langfuse"]
+  failure_callback: ["langfuse"]
+  langfuse_secret: os.environ/LANGFUSE_SECRET_KEY
+  langfuse_public_key: os.environ/LANGFUSE_PUBLIC_KEY
+  langfuse_host: os.environ/LANGFUSE_HOST
+
+  # ── Response Caching → Redis ─────────────────────────
+  cache: true
+  enable_redis_auth_cache: true
+  cache_params:
+    type: redis
+    host: redis
+    port: 6379
+    ttl: 3600
+    supported_call_types:
+      - acompletion
+      - completion
+
+  # ── Request/response logging ──────────────────────────
+  set_verbose: false
+  json_logs: true
+
+  # ── Fallback / retry strategy ─────────────────────────
+  num_retries: 2
+  request_timeout: 60
